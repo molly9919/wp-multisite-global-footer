@@ -11,7 +11,11 @@ Simple WordPress multisite plugin that adds a network-wide link to the main site
   - Custom footer background color
   - Custom footer text color
   - Custom button color
-- Optional compact header menu link (inserted next to WP icon, before Login/Register)
+  - Fallback output-buffer injection so footer still appears on themes missing `wp_footer()`
+- Optional compact header menu link
+  - Position: next to WP icon / before Login/Register when present
+  - Works for logged-out and logged-in users
+  - Supports standard menus and hardcoded header link structures (DOM fallback)
   - Custom text
   - Optional house icon
   - Custom background and text color

@@ -34,9 +34,9 @@ final class WP_Multisite_Global_Footer
         add_action('network_admin_menu', [$this, 'register_network_page']);
         add_action('network_admin_edit_wpmgf_save_settings', [$this, 'save_settings']);
 
+        add_action('template_redirect', [$this, 'start_frontend_buffering'], 0);
         add_action('wp_body_open', [$this, 'render_header_bar'], 5);
         add_action('wp_footer', [$this, 'render_header_bar_fallback'], 1);
-        add_action('wp_footer', [$this, 'render_footer_link'], 20);
     }
 
     public static function activate(): void
@@ -215,6 +215,34 @@ final class WP_Multisite_Global_Footer
         <?php
     }
 
+
+    public function start_frontend_buffering(): void
+    {
+        if (is_admin() || wp_doing_ajax() || wp_is_json_request()) {
+            return;
+        }
+
+        ob_start([$this, 'inject_footer_markup_into_html']);
+    }
+
+    public function inject_footer_markup_into_html(string $html): string
+    {
+        if (strpos($html, 'wpmgf-global-footer') !== false) {
+            return $html;
+        }
+
+        $markup = $this->get_footer_markup();
+        if ($markup === '') {
+            return $html;
+        }
+
+        if (stripos($html, '</body>') !== false) {
+            return preg_replace('/<\/body>/i', $markup . '</body>', $html, 1) ?: ($html . $markup);
+        }
+
+        return $html . $markup;
+    }
+
     public function save_settings(): void
     {
         if (! current_user_can('manage_network_options')) {
@@ -294,13 +322,22 @@ final class WP_Multisite_Global_Footer
 
     public function render_footer_link(): void
     {
-        if (is_admin() || ! $this->should_render_on_current_site()) {
+        if (is_admin()) {
             return;
+        }
+
+        echo $this->get_footer_markup();
+    }
+
+    private function get_footer_markup(): string
+    {
+        if (! $this->should_render_on_current_site()) {
+            return '';
         }
 
         $settings = $this->get_settings();
         if (empty($settings['enable_footer'])) {
-            return;
+            return '';
         }
 
         $main_url = $this->get_main_site_url();
@@ -312,38 +349,40 @@ final class WP_Multisite_Global_Footer
             esc_attr($settings['footer_text_color'])
         );
 
-        echo '<div class="wpmgf-global-footer" style="' . $wrapper_style . '">';
+        $output = '<div class="wpmgf-global-footer" style="' . $wrapper_style . '">';
 
         $link_text = $settings['footer_text'] !== '' ? $settings['footer_text'] : __('Visit Main Website', 'wpmgf');
 
-        echo '<div class="wpmgf-footer-primary-link" style="display:block;">';
+        $output .= '<div class="wpmgf-footer-primary-link" style="display:block;">';
         if ($settings['footer_style'] === 'text') {
-            echo '<a href="' . esc_url($main_url) . '" style="color:' . esc_attr($settings['footer_text_color']) . ';text-decoration:underline;font-weight:600;"' . $target . '>' . esc_html($link_text) . '</a>';
+            $output .= '<a href="' . esc_url($main_url) . '" style="color:' . esc_attr($settings['footer_text_color']) . ';text-decoration:underline;font-weight:600;"' . $target . '>' . esc_html($link_text) . '</a>';
         } else {
             $button_style = sprintf(
                 'display:inline-block;background:%1$s;color:%2$s;padding:10px 16px;border-radius:5px;text-decoration:none;font-weight:700;',
                 esc_attr($settings['footer_button_color']),
                 esc_attr($settings['footer_text_color'])
             );
-            echo '<a href="' . esc_url($main_url) . '" style="' . $button_style . '"' . $target . '>' . esc_html($link_text) . '</a>';
+            $output .= '<a href="' . esc_url($main_url) . '" style="' . $button_style . '"' . $target . '>' . esc_html($link_text) . '</a>';
         }
-        echo '</div>';
+        $output .= '</div>';
 
         if (! empty($settings['footer_banner_image_url'])) {
             $banner_img_url = esc_url($settings['footer_banner_image_url']);
             $banner_link = ! empty($settings['footer_banner_link_url']) ? esc_url($settings['footer_banner_link_url']) : '';
             $banner_img = '<img src="' . $banner_img_url . '" alt="' . esc_attr__('Footer banner', 'wpmgf') . '" style="display:block;max-width:100%;height:auto;margin:12px auto 0;" />';
 
-            echo '<div class="wpmgf-footer-banner" style="display:block;clear:both;width:100%;margin-top:12px;text-align:center;">';
+            $output .= '<div class="wpmgf-footer-banner" style="display:block;clear:both;width:100%;margin-top:12px;text-align:center;">';
             if ($banner_link !== '') {
-                echo '<a href="' . $banner_link . '" style="display:block;max-width:100%;"' . $target . '>' . $banner_img . '</a>';
+                $output .= '<a href="' . $banner_link . '" style="display:block;max-width:100%;"' . $target . '>' . $banner_img . '</a>';
             } else {
-                echo $banner_img;
+                $output .= $banner_img;
             }
-            echo '</div>';
+            $output .= '</div>';
         }
 
-        echo '</div>';
+        $output .= '</div>';
+
+        return $output;
     }
 
     private function get_main_site_url(): string

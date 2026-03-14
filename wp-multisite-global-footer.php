@@ -344,7 +344,7 @@ final class WP_Multisite_Global_Footer
         $target = ! empty($settings['open_new_tab']) ? ' target="_blank" rel="noopener"' : '';
 
         $wrapper_style = sprintf(
-            'background:%1$s;color:%2$s;padding:14px 16px;text-align:center;margin-top:24px;',
+            'background:%1$s;color:%2$s;padding:14px 16px;text-align:center;position:fixed;left:0;right:0;bottom:0;z-index:99999;box-shadow:0 -2px 8px rgba(0,0,0,.2);',
             esc_attr($settings['footer_bg_color']),
             esc_attr($settings['footer_text_color'])
         );
@@ -381,6 +381,7 @@ final class WP_Multisite_Global_Footer
         }
 
         $output .= '</div>';
+        $output .= "<script id=\"wpmgf-footer-spacer\">(function(){var f=document.querySelector('.wpmgf-global-footer');if(!f){return;}var h=f.offsetHeight||0;document.body.style.paddingBottom=h+'px';})();</script>";
 
         return $output;
     }

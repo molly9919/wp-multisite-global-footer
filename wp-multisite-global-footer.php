@@ -35,8 +35,8 @@ final class WP_Multisite_Global_Footer
         add_action('network_admin_edit_wpmgf_save_settings', [$this, 'save_settings']);
 
         add_action('wp_footer', [$this, 'render_footer_link'], 20);
-        add_action('wp_body_open', [$this, 'render_header_link']);
-        add_action('wp_footer', [$this, 'render_header_link_fallback'], 1);
+        add_filter('wp_nav_menu_items', [$this, 'inject_header_menu_link'], 20, 2);
+        add_action('wp_head', [$this, 'render_header_menu_styles']);
     }
 
     public static function activate(): void
@@ -150,7 +150,7 @@ final class WP_Multisite_Global_Footer
                 <table class="form-table" role="presentation">
                     <tr>
                         <th scope="row"><?php echo esc_html__('Enable header link', 'wpmgf'); ?></th>
-                        <td><label><input type="checkbox" name="enable_header_link" value="1" <?php checked(1, (int) $settings['enable_header_link']); ?> /> <?php echo esc_html__('Show a compact link near the top of each page', 'wpmgf'); ?></label></td>
+                        <td><label><input type="checkbox" name="enable_header_link" value="1" <?php checked(1, (int) $settings['enable_header_link']); ?> /> <?php echo esc_html__('Add a compact menu link in the site header navigation (after Login/Register when present)', 'wpmgf'); ?></label></td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="header_text"><?php echo esc_html__('Header text', 'wpmgf'); ?></label></th>
@@ -247,19 +247,7 @@ final class WP_Multisite_Global_Footer
         echo '</div>';
     }
 
-    public function render_header_link(): void
-    {
-        $this->render_header_link_markup();
-    }
-
-    public function render_header_link_fallback(): void
-    {
-        if (! did_action('wp_body_open')) {
-            $this->render_header_link_markup();
-        }
-    }
-
-    private function render_header_link_markup(): void
+    public function render_header_menu_styles(): void
     {
         if (is_admin()) {
             return;
@@ -270,19 +258,50 @@ final class WP_Multisite_Global_Footer
             return;
         }
 
-        $main_url = $this->get_main_site_url();
+        $bg = esc_html($settings['header_bg_color']);
+        $text = esc_html($settings['header_text_color']);
+
+        echo '<style id="wpmgf-header-menu-style">';
+        echo '.wpmgf-header-menu-link>a{display:inline-flex;align-items:center;gap:6px;background:' . $bg . ';color:' . $text . ' !important;padding:6px 10px;border-radius:14px;line-height:1.2;text-decoration:none;}';
+        echo '.wpmgf-header-menu-link>a:hover,.wpmgf-header-menu-link>a:focus{opacity:.9;color:' . $text . ' !important;}';
+        echo '.wpmgf-header-menu-link .wpmgf-header-menu-icon{line-height:1;}';
+        echo '</style>';
+    }
+
+    public function inject_header_menu_link(string $items, $_args): string
+    {
+        if (is_admin()) {
+            return $items;
+        }
+
+        $settings = $this->get_settings();
+        if (empty($settings['enable_header_link'])) {
+            return $items;
+        }
+
+        if (strpos($items, 'wpmgf-header-menu-link') !== false) {
+            return $items;
+        }
+
         $target = ! empty($settings['open_new_tab']) ? ' target="_blank" rel="noopener"' : '';
-
         $label = $settings['header_text'] !== '' ? $settings['header_text'] : __('Main Site', 'wpmgf');
-        $icon = ! empty($settings['show_header_icon']) ? '<span aria-hidden="true" style="margin-right:6px;">🏠</span>' : '';
+        $icon = ! empty($settings['show_header_icon']) ? '<span class="wpmgf-header-menu-icon" aria-hidden="true">🏠</span>' : '';
+        $link_item = '<li class="menu-item wpmgf-header-menu-link"><a href="' . esc_url($this->get_main_site_url()) . '"' . $target . '>' . $icon . '<span>' . esc_html($label) . '</span></a></li>';
 
-        $style = sprintf(
-            'position:fixed;left:8px;top:8px;z-index:9999;background:%1$s;color:%2$s;padding:6px 10px;border-radius:14px;font-size:13px;line-height:1;text-decoration:none;display:inline-flex;align-items:center;box-shadow:0 1px 3px rgba(0,0,0,.2);',
-            esc_attr($settings['header_bg_color']),
-            esc_attr($settings['header_text_color'])
-        );
+        $patterns = [
+            '/(<li\b[^>]*>.*?wp-login\.php\?action=register.*?<\/li>)/is',
+            '/(<li\b[^>]*>.*?>\s*Register\s*<.*?<\/li>)/is',
+            '/(<li\b[^>]*>.*?wp-login\.php.*?<\/li>)/is',
+            '/(<li\b[^>]*>.*?>\s*Log\s*In\s*<.*?<\/li>)/is',
+        ];
 
-        echo '<a class="wpmgf-header-link" href="' . esc_url($main_url) . '" style="' . $style . '"' . $target . '>' . $icon . '<span>' . esc_html($label) . '</span></a>';
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $items, $matches)) {
+                return str_replace($matches[1], $matches[1] . $link_item, $items);
+            }
+        }
+
+        return $items . $link_item;
     }
 
     private function get_main_site_url(): string

@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: WP Multisite Global Footer
- * Description: Adds a global network footer link (button or text) and optional header icon/text link to the main site across a multisite network.
- * Version: 1.1.0
+ * Description: Adds a global network footer link (button or text) and optional top header bar link to the main site across a multisite network.
+ * Version: 1.2.0
  * Author: Codex
  * Network: true
  * Requires at least: 5.8
@@ -20,9 +20,6 @@ final class WP_Multisite_Global_Footer
     /** @var self|null */
     private static $instance = null;
 
-    /** @var bool */
-    private $header_script_printed = false;
-
     public static function instance(): self
     {
         if (self::$instance === null) {
@@ -37,16 +34,9 @@ final class WP_Multisite_Global_Footer
         add_action('network_admin_menu', [$this, 'register_network_page']);
         add_action('network_admin_edit_wpmgf_save_settings', [$this, 'save_settings']);
 
-        add_action('template_redirect', [$this, 'start_frontend_buffering'], 0);
+        add_action('wp_body_open', [$this, 'render_header_bar'], 5);
+        add_action('wp_footer', [$this, 'render_header_bar_fallback'], 1);
         add_action('wp_footer', [$this, 'render_footer_link'], 20);
-
-        // Menu-based insertion (works when theme uses standard WordPress menus).
-        add_filter('wp_nav_menu_items', [$this, 'inject_header_menu_link'], 20, 2);
-        add_filter('wp_page_menu', [$this, 'inject_header_page_menu_link'], 20, 2);
-
-        // DOM fallback injector for themes that hardcode login/register links.
-        add_action('wp_head', [$this, 'render_header_dom_injector']);
-        add_action('wp_footer', [$this, 'render_header_dom_injector'], 1);
     }
 
     public static function activate(): void
@@ -92,6 +82,15 @@ final class WP_Multisite_Global_Footer
         return wp_parse_args($saved, self::default_settings());
     }
 
+    private function should_render_on_current_site(): bool
+    {
+        if (! is_multisite()) {
+            return true;
+        }
+
+        return get_current_blog_id() !== (int) get_main_site_id();
+    }
+
     public function register_network_page(): void
     {
         add_submenu_page(
@@ -129,7 +128,7 @@ final class WP_Multisite_Global_Footer
                 <table class="form-table" role="presentation">
                     <tr>
                         <th scope="row"><?php echo esc_html__('Enable footer', 'wpmgf'); ?></th>
-                        <td><label><input type="checkbox" name="enable_footer" value="1" <?php checked(1, (int) $settings['enable_footer']); ?> /> <?php echo esc_html__('Show the footer on all sites', 'wpmgf'); ?></label></td>
+                        <td><label><input type="checkbox" name="enable_footer" value="1" <?php checked(1, (int) $settings['enable_footer']); ?> /> <?php echo esc_html__('Show the footer on all addon sites (not on main site)', 'wpmgf'); ?></label></td>
                     </tr>
                     <tr>
                         <th scope="row"><?php echo esc_html__('Footer style', 'wpmgf'); ?></th>
@@ -156,22 +155,22 @@ final class WP_Multisite_Global_Footer
                     </tr>
                 </table>
 
-                <h2><?php echo esc_html__('Optional Header Link', 'wpmgf'); ?></h2>
+                <h2><?php echo esc_html__('Optional Top Header Bar Link', 'wpmgf'); ?></h2>
                 <table class="form-table" role="presentation">
                     <tr>
-                        <th scope="row"><?php echo esc_html__('Enable header link', 'wpmgf'); ?></th>
-                        <td><label><input type="checkbox" name="enable_header_link" value="1" <?php checked(1, (int) $settings['enable_header_link']); ?> /> <?php echo esc_html__('Show next to WP icon, before Login/Register (works for logged-out and logged-in users)', 'wpmgf'); ?></label></td>
+                        <th scope="row"><?php echo esc_html__('Enable top bar link', 'wpmgf'); ?></th>
+                        <td><label><input type="checkbox" name="enable_header_link" value="1" <?php checked(1, (int) $settings['enable_header_link']); ?> /> <?php echo esc_html__('Show a compact bar below the WP admin header on addon sites only', 'wpmgf'); ?></label></td>
                     </tr>
                     <tr>
-                        <th scope="row"><label for="header_text"><?php echo esc_html__('Header text', 'wpmgf'); ?></label></th>
+                        <th scope="row"><label for="header_text"><?php echo esc_html__('Top bar text', 'wpmgf'); ?></label></th>
                         <td><input id="header_text" name="header_text" type="text" class="regular-text" value="<?php echo esc_attr($settings['header_text']); ?>" /></td>
                     </tr>
                     <tr>
-                        <th scope="row"><label for="header_bg_color"><?php echo esc_html__('Header background color', 'wpmgf'); ?></label></th>
+                        <th scope="row"><label for="header_bg_color"><?php echo esc_html__('Top bar background color', 'wpmgf'); ?></label></th>
                         <td><input id="header_bg_color" name="header_bg_color" type="text" class="regular-text" value="<?php echo esc_attr($settings['header_bg_color']); ?>" placeholder="#111827" /></td>
                     </tr>
                     <tr>
-                        <th scope="row"><label for="header_text_color"><?php echo esc_html__('Header text color', 'wpmgf'); ?></label></th>
+                        <th scope="row"><label for="header_text_color"><?php echo esc_html__('Top bar text color', 'wpmgf'); ?></label></th>
                         <td><input id="header_text_color" name="header_text_color" type="text" class="regular-text" value="<?php echo esc_attr($settings['header_text_color']); ?>" placeholder="#ffffff" /></td>
                     </tr>
                     <tr>
@@ -219,52 +218,48 @@ final class WP_Multisite_Global_Footer
         exit;
     }
 
-    public function start_frontend_buffering(): void
+    public function render_header_bar(): void
     {
-        if (is_admin() || wp_doing_ajax() || wp_is_json_request()) {
+        if (is_admin() || ! $this->should_render_on_current_site()) {
             return;
         }
 
-        ob_start([$this, 'inject_footer_markup_into_html']);
+        $settings = $this->get_settings();
+        if (empty($settings['enable_header_link'])) {
+            return;
+        }
+
+        $target = ! empty($settings['open_new_tab']) ? ' target="_blank" rel="noopener"' : '';
+        $label = $settings['header_text'] !== '' ? $settings['header_text'] : __('Main Site', 'wpmgf');
+        $icon = ! empty($settings['show_header_icon']) ? '<span aria-hidden="true" style="margin-right:6px;">🏠</span>' : '';
+
+        $bar_style = sprintf(
+            'background:%1$s;color:%2$s;padding:10px 16px;text-align:center;',
+            esc_attr($settings['header_bg_color']),
+            esc_attr($settings['header_text_color'])
+        );
+
+        echo '<div class="wpmgf-global-header" style="' . $bar_style . '">';
+        echo '<a href="' . esc_url($this->get_main_site_url()) . '" style="color:' . esc_attr($settings['header_text_color']) . ';text-decoration:none;font-weight:700;display:inline-flex;align-items:center;"' . $target . '>' . $icon . '<span>' . esc_html($label) . '</span></a>';
+        echo '</div>';
     }
 
-    public function inject_footer_markup_into_html(string $html): string
+    public function render_header_bar_fallback(): void
     {
-        $settings = $this->get_settings();
-        if (empty($settings['enable_footer'])) {
-            return $html;
+        if (! did_action('wp_body_open')) {
+            $this->render_header_bar();
         }
-
-        if (strpos($html, 'wpmgf-global-footer') !== false) {
-            return $html;
-        }
-
-        $footer = $this->get_footer_markup();
-        if ($footer === '') {
-            return $html;
-        }
-
-        if (stripos($html, '</body>') !== false) {
-            return preg_replace('/<\/body>/i', $footer . '</body>', $html, 1) ?: ($html . $footer);
-        }
-
-        return $html . $footer;
     }
 
     public function render_footer_link(): void
     {
-        if (is_admin()) {
+        if (is_admin() || ! $this->should_render_on_current_site()) {
             return;
         }
 
-        echo $this->get_footer_markup();
-    }
-
-    private function get_footer_markup(): string
-    {
         $settings = $this->get_settings();
         if (empty($settings['enable_footer'])) {
-            return '';
+            return;
         }
 
         $main_url = $this->get_main_site_url();
@@ -276,183 +271,22 @@ final class WP_Multisite_Global_Footer
             esc_attr($settings['footer_text_color'])
         );
 
+        echo '<div class="wpmgf-global-footer" style="' . $wrapper_style . '">';
+
         $link_text = $settings['footer_text'] !== '' ? $settings['footer_text'] : __('Visit Main Website', 'wpmgf');
 
         if ($settings['footer_style'] === 'text') {
-            $link_markup = '<a href="' . esc_url($main_url) . '" style="color:' . esc_attr($settings['footer_text_color']) . ';text-decoration:underline;font-weight:600;"' . $target . '>' . esc_html($link_text) . '</a>';
+            echo '<a href="' . esc_url($main_url) . '" style="color:' . esc_attr($settings['footer_text_color']) . ';text-decoration:underline;font-weight:600;"' . $target . '>' . esc_html($link_text) . '</a>';
         } else {
             $button_style = sprintf(
                 'display:inline-block;background:%1$s;color:%2$s;padding:10px 16px;border-radius:5px;text-decoration:none;font-weight:700;',
                 esc_attr($settings['footer_button_color']),
                 esc_attr($settings['footer_text_color'])
             );
-            $link_markup = '<a href="' . esc_url($main_url) . '" style="' . $button_style . '"' . $target . '>' . esc_html($link_text) . '</a>';
+            echo '<a href="' . esc_url($main_url) . '" style="' . $button_style . '"' . $target . '>' . esc_html($link_text) . '</a>';
         }
 
-        return '<div class="wpmgf-global-footer" style="' . $wrapper_style . '">' . $link_markup . '</div>';
-    }
-
-    public function inject_header_menu_link(string $items, $_args): string
-    {
-        if (is_admin()) {
-            return $items;
-        }
-
-        $settings = $this->get_settings();
-        if (empty($settings['enable_header_link']) || strpos($items, 'wpmgf-header-menu-link') !== false) {
-            return $items;
-        }
-
-        $link_item = $this->build_header_menu_item($settings);
-
-        if (preg_match('/(<li\b[^>]*>.*?<\/li>)/is', $items)) {
-            return preg_replace('/(<li\b[^>]*>.*?<\/li>)/is', '$1' . $link_item, $items, 1) ?: ($items . $link_item);
-        }
-
-        return $items . $link_item;
-    }
-
-    public function inject_header_page_menu_link(string $menu, $_args): string
-    {
-        if (is_admin()) {
-            return $menu;
-        }
-
-        $settings = $this->get_settings();
-        if (empty($settings['enable_header_link']) || strpos($menu, 'wpmgf-header-menu-link') !== false) {
-            return $menu;
-        }
-
-        $link_item = $this->build_header_menu_item($settings);
-
-        if (preg_match('/(<li\b[^>]*>.*?<\/li>)/is', $menu)) {
-            return preg_replace('/(<li\b[^>]*>.*?<\/li>)/is', '$1' . $link_item, $menu, 1) ?: ($menu . $link_item);
-        }
-
-        return $menu . $link_item;
-    }
-
-    public function render_header_dom_injector(): void
-    {
-        if ($this->header_script_printed || is_admin()) {
-            return;
-        }
-
-        $settings = $this->get_settings();
-        if (empty($settings['enable_header_link'])) {
-            return;
-        }
-
-        $this->header_script_printed = true;
-
-        $target_attr = ! empty($settings['open_new_tab']) ? ' target="_blank" rel="noopener"' : '';
-        $icon = ! empty($settings['show_header_icon']) ? '<span class="wpmgf-header-menu-icon" aria-hidden="true">🏠</span>' : '';
-        $label = $settings['header_text'] !== '' ? $settings['header_text'] : __('Main Site', 'wpmgf');
-        $link_html = '<li class="menu-item wpmgf-header-menu-link"><a href="' . esc_url($this->get_main_site_url()) . '"' . $target_attr . '>' . $icon . '<span>' . esc_html($label) . '</span></a></li>';
-
-        ?>
-        <style id="wpmgf-header-menu-style">
-            .wpmgf-header-menu-link > a {
-                display: inline-flex;
-                align-items: center;
-                gap: 6px;
-                background: <?php echo esc_html($settings['header_bg_color']); ?>;
-                color: <?php echo esc_html($settings['header_text_color']); ?> !important;
-                padding: 6px 10px;
-                border-radius: 14px;
-                line-height: 1.2;
-                text-decoration: none;
-            }
-            .wpmgf-header-menu-link > a:hover,
-            .wpmgf-header-menu-link > a:focus {
-                color: <?php echo esc_html($settings['header_text_color']); ?> !important;
-                opacity: .9;
-            }
-            .wpmgf-header-menu-link .wpmgf-header-menu-icon {
-                line-height: 1;
-            }
-        </style>
-        <script id="wpmgf-header-menu-script">
-            (function () {
-                var linkHtml = <?php echo wp_json_encode($link_html); ?>;
-
-                function createNodeFromHtml(html) {
-                    var holder = document.createElement('div');
-                    holder.innerHTML = html;
-                    return holder.firstElementChild;
-                }
-
-                function isInjected() {
-                    return !!document.querySelector('.wpmgf-header-menu-link');
-                }
-
-                function insertBeforeLoginRegister() {
-                    var anchors = Array.prototype.slice.call(document.querySelectorAll('a'));
-                    var loginAnchor = anchors.find(function (a) {
-                        var href = (a.getAttribute('href') || '').toLowerCase();
-                        var text = (a.textContent || '').trim().toLowerCase();
-                        return href.indexOf('wp-login.php') !== -1 || text === 'log in' || text === 'register';
-                    });
-
-                    if (loginAnchor) {
-                        var li = loginAnchor.closest('li');
-                        if (li && li.parentNode) {
-                            li.parentNode.insertBefore(createNodeFromHtml(linkHtml), li);
-                            return true;
-                        }
-                    }
-
-                    return false;
-                }
-
-                function insertAfterFirstMenuItem() {
-                    var menuList = document.querySelector('ul');
-                    if (!menuList) {
-                        return false;
-                    }
-
-                    var firstLi = menuList.querySelector('li');
-                    if (firstLi && firstLi.parentNode) {
-                        firstLi.insertAdjacentElement('afterend', createNodeFromHtml(linkHtml));
-                        return true;
-                    }
-
-                    menuList.insertAdjacentHTML('beforeend', linkHtml);
-                    return true;
-                }
-
-                function inject() {
-                    if (isInjected()) {
-                        return;
-                    }
-
-                    if (insertBeforeLoginRegister()) {
-                        return;
-                    }
-
-                    insertAfterFirstMenuItem();
-                }
-
-                if (document.readyState === 'loading') {
-                    document.addEventListener('DOMContentLoaded', inject);
-                } else {
-                    inject();
-                }
-
-                // In case menus are rendered later by JS.
-                setTimeout(inject, 800);
-            })();
-        </script>
-        <?php
-    }
-
-    private function build_header_menu_item(array $settings): string
-    {
-        $target = ! empty($settings['open_new_tab']) ? ' target="_blank" rel="noopener"' : '';
-        $label = $settings['header_text'] !== '' ? $settings['header_text'] : __('Main Site', 'wpmgf');
-        $icon = ! empty($settings['show_header_icon']) ? '<span class="wpmgf-header-menu-icon" aria-hidden="true">🏠</span>' : '';
-
-        return '<li class="menu-item wpmgf-header-menu-link"><a href="' . esc_url($this->get_main_site_url()) . '"' . $target . '>' . $icon . '<span>' . esc_html($label) . '</span></a></li>';
+        echo '</div>';
     }
 
     private function get_main_site_url(): string

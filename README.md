@@ -8,14 +8,14 @@ Simple WordPress multisite plugin that adds a network-wide link to the main site
 - Footer link shown on addon sites only (hidden on main site)
   - Display as button or text link
   - Custom text
-  - Custom footer background color
-  - Custom footer text color
-  - Custom button color
+  - Custom footer background/text/button colors
+  - Optional banner image under the footer link (any size)
+  - Optional banner click URL
 - Optional top header bar link shown on addon sites only (hidden on main site)
-  - Renders as a simple bar near the top of page (below WP admin bar area)
+  - Display as text link or button
   - Custom text
   - Optional house icon
-  - Custom background and text color
+  - Custom background/text/button colors
   - Opens in same/new tab
 
 ## Installation

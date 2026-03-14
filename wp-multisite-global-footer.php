@@ -1,9 +1,9 @@
 <?php
 /**
  * Plugin Name: WP Multisite Global Footer
- * Description: Adds a global network footer link (button or text) and optional top header bar link to the main site across a multisite network.
- * Version: 1.2.0
- * Author: Codex
+ * Description: Adds a global network footer link (button or text), optional footer banner, and optional top header bar link to the main site across a multisite network.
+ * Version: 1.0
+ * Author: Molly9
  * Network: true
  * Requires at least: 5.8
  * Requires PHP: 7.4
@@ -63,10 +63,14 @@ final class WP_Multisite_Global_Footer
             'footer_bg_color'          => '#111827',
             'footer_text_color'        => '#ffffff',
             'footer_button_color'      => '#84cc16',
+            'footer_banner_image_url'  => '',
+            'footer_banner_link_url'   => '',
             'enable_header_link'       => 0,
+            'header_style'             => 'text',
             'header_text'              => 'Main Site',
             'header_bg_color'          => '#111827',
             'header_text_color'        => '#ffffff',
+            'header_button_color'      => '#84cc16',
             'show_header_icon'         => 1,
             'open_new_tab'             => 0,
         ];
@@ -153,6 +157,17 @@ final class WP_Multisite_Global_Footer
                         <th scope="row"><label for="footer_button_color"><?php echo esc_html__('Footer button color', 'wpmgf'); ?></label></th>
                         <td><input id="footer_button_color" name="footer_button_color" type="text" class="regular-text" value="<?php echo esc_attr($settings['footer_button_color']); ?>" placeholder="#84cc16" /></td>
                     </tr>
+                    <tr>
+                        <th scope="row"><label for="footer_banner_image_url"><?php echo esc_html__('Footer banner image URL', 'wpmgf'); ?></label></th>
+                        <td>
+                            <input id="footer_banner_image_url" name="footer_banner_image_url" type="url" class="regular-text" value="<?php echo esc_attr($settings['footer_banner_image_url']); ?>" placeholder="https://example.com/banner.jpg" />
+                            <p class="description"><?php echo esc_html__('If set, banner is shown below the footer link text/button. Any image size is allowed.', 'wpmgf'); ?></p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="footer_banner_link_url"><?php echo esc_html__('Footer banner click URL', 'wpmgf'); ?></label></th>
+                        <td><input id="footer_banner_link_url" name="footer_banner_link_url" type="url" class="regular-text" value="<?php echo esc_attr($settings['footer_banner_link_url']); ?>" placeholder="https://example.com/" /></td>
+                    </tr>
                 </table>
 
                 <h2><?php echo esc_html__('Optional Top Header Bar Link', 'wpmgf'); ?></h2>
@@ -160,6 +175,13 @@ final class WP_Multisite_Global_Footer
                     <tr>
                         <th scope="row"><?php echo esc_html__('Enable top bar link', 'wpmgf'); ?></th>
                         <td><label><input type="checkbox" name="enable_header_link" value="1" <?php checked(1, (int) $settings['enable_header_link']); ?> /> <?php echo esc_html__('Show a compact bar below the WP admin header on addon sites only', 'wpmgf'); ?></label></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php echo esc_html__('Header style', 'wpmgf'); ?></th>
+                        <td>
+                            <label><input type="radio" name="header_style" value="text" <?php checked('text', $settings['header_style']); ?> /> <?php echo esc_html__('Text link', 'wpmgf'); ?></label><br />
+                            <label><input type="radio" name="header_style" value="button" <?php checked('button', $settings['header_style']); ?> /> <?php echo esc_html__('Button', 'wpmgf'); ?></label>
+                        </td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="header_text"><?php echo esc_html__('Top bar text', 'wpmgf'); ?></label></th>
@@ -172,6 +194,10 @@ final class WP_Multisite_Global_Footer
                     <tr>
                         <th scope="row"><label for="header_text_color"><?php echo esc_html__('Top bar text color', 'wpmgf'); ?></label></th>
                         <td><input id="header_text_color" name="header_text_color" type="text" class="regular-text" value="<?php echo esc_attr($settings['header_text_color']); ?>" placeholder="#ffffff" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="header_button_color"><?php echo esc_html__('Header button color', 'wpmgf'); ?></label></th>
+                        <td><input id="header_button_color" name="header_button_color" type="text" class="regular-text" value="<?php echo esc_attr($settings['header_button_color']); ?>" placeholder="#84cc16" /></td>
                     </tr>
                     <tr>
                         <th scope="row"><?php echo esc_html__('Show icon', 'wpmgf'); ?></th>
@@ -198,18 +224,22 @@ final class WP_Multisite_Global_Footer
         check_admin_referer('wpmgf_save_settings');
 
         $settings = [
-            'enable_footer'       => isset($_POST['enable_footer']) ? 1 : 0,
-            'footer_style'        => isset($_POST['footer_style']) && $_POST['footer_style'] === 'text' ? 'text' : 'button',
-            'footer_text'         => isset($_POST['footer_text']) ? sanitize_text_field(wp_unslash($_POST['footer_text'])) : '',
-            'footer_bg_color'     => $this->sanitize_hex_color($_POST['footer_bg_color'] ?? '#111827', '#111827'),
-            'footer_text_color'   => $this->sanitize_hex_color($_POST['footer_text_color'] ?? '#ffffff', '#ffffff'),
-            'footer_button_color' => $this->sanitize_hex_color($_POST['footer_button_color'] ?? '#84cc16', '#84cc16'),
-            'enable_header_link'  => isset($_POST['enable_header_link']) ? 1 : 0,
-            'header_text'         => isset($_POST['header_text']) ? sanitize_text_field(wp_unslash($_POST['header_text'])) : '',
-            'header_bg_color'     => $this->sanitize_hex_color($_POST['header_bg_color'] ?? '#111827', '#111827'),
-            'header_text_color'   => $this->sanitize_hex_color($_POST['header_text_color'] ?? '#ffffff', '#ffffff'),
-            'show_header_icon'    => isset($_POST['show_header_icon']) ? 1 : 0,
-            'open_new_tab'        => isset($_POST['open_new_tab']) ? 1 : 0,
+            'enable_footer'           => isset($_POST['enable_footer']) ? 1 : 0,
+            'footer_style'            => isset($_POST['footer_style']) && $_POST['footer_style'] === 'text' ? 'text' : 'button',
+            'footer_text'             => isset($_POST['footer_text']) ? sanitize_text_field(wp_unslash($_POST['footer_text'])) : '',
+            'footer_bg_color'         => $this->sanitize_hex_color($_POST['footer_bg_color'] ?? '#111827', '#111827'),
+            'footer_text_color'       => $this->sanitize_hex_color($_POST['footer_text_color'] ?? '#ffffff', '#ffffff'),
+            'footer_button_color'     => $this->sanitize_hex_color($_POST['footer_button_color'] ?? '#84cc16', '#84cc16'),
+            'footer_banner_image_url' => isset($_POST['footer_banner_image_url']) ? esc_url_raw(wp_unslash($_POST['footer_banner_image_url'])) : '',
+            'footer_banner_link_url'  => isset($_POST['footer_banner_link_url']) ? esc_url_raw(wp_unslash($_POST['footer_banner_link_url'])) : '',
+            'enable_header_link'      => isset($_POST['enable_header_link']) ? 1 : 0,
+            'header_style'            => isset($_POST['header_style']) && $_POST['header_style'] === 'button' ? 'button' : 'text',
+            'header_text'             => isset($_POST['header_text']) ? sanitize_text_field(wp_unslash($_POST['header_text'])) : '',
+            'header_bg_color'         => $this->sanitize_hex_color($_POST['header_bg_color'] ?? '#111827', '#111827'),
+            'header_text_color'       => $this->sanitize_hex_color($_POST['header_text_color'] ?? '#ffffff', '#ffffff'),
+            'header_button_color'     => $this->sanitize_hex_color($_POST['header_button_color'] ?? '#84cc16', '#84cc16'),
+            'show_header_icon'        => isset($_POST['show_header_icon']) ? 1 : 0,
+            'open_new_tab'            => isset($_POST['open_new_tab']) ? 1 : 0,
         ];
 
         update_network_option(get_main_network_id(), self::OPTION_KEY, $settings);
@@ -240,7 +270,18 @@ final class WP_Multisite_Global_Footer
         );
 
         echo '<div class="wpmgf-global-header" style="' . $bar_style . '">';
-        echo '<a href="' . esc_url($this->get_main_site_url()) . '" style="color:' . esc_attr($settings['header_text_color']) . ';text-decoration:none;font-weight:700;display:inline-flex;align-items:center;"' . $target . '>' . $icon . '<span>' . esc_html($label) . '</span></a>';
+
+        if ($settings['header_style'] === 'button') {
+            $button_style = sprintf(
+                'display:inline-flex;align-items:center;background:%1$s;color:%2$s;padding:9px 14px;border-radius:5px;text-decoration:none;font-weight:700;',
+                esc_attr($settings['header_button_color']),
+                esc_attr($settings['header_text_color'])
+            );
+            echo '<a href="' . esc_url($this->get_main_site_url()) . '" style="' . $button_style . '"' . $target . '>' . $icon . '<span>' . esc_html($label) . '</span></a>';
+        } else {
+            echo '<a href="' . esc_url($this->get_main_site_url()) . '" style="color:' . esc_attr($settings['header_text_color']) . ';text-decoration:none;font-weight:700;display:inline-flex;align-items:center;"' . $target . '>' . $icon . '<span>' . esc_html($label) . '</span></a>';
+        }
+
         echo '</div>';
     }
 
@@ -284,6 +325,18 @@ final class WP_Multisite_Global_Footer
                 esc_attr($settings['footer_text_color'])
             );
             echo '<a href="' . esc_url($main_url) . '" style="' . $button_style . '"' . $target . '>' . esc_html($link_text) . '</a>';
+        }
+
+        if (! empty($settings['footer_banner_image_url'])) {
+            $banner_img_url = esc_url($settings['footer_banner_image_url']);
+            $banner_link = ! empty($settings['footer_banner_link_url']) ? esc_url($settings['footer_banner_link_url']) : '';
+            $banner_img = '<img src="' . $banner_img_url . '" alt="' . esc_attr__('Footer banner', 'wpmgf') . '" style="display:block;max-width:100%;height:auto;margin:12px auto 0;" />';
+
+            if ($banner_link !== '') {
+                echo '<a href="' . $banner_link . '" style="display:inline-block;max-width:100%;"' . $target . '>' . $banner_img . '</a>';
+            } else {
+                echo $banner_img;
+            }
         }
 
         echo '</div>';

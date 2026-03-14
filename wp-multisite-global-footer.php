@@ -36,6 +36,7 @@ final class WP_Multisite_Global_Footer
 
         add_action('wp_footer', [$this, 'render_footer_link'], 20);
         add_filter('wp_nav_menu_items', [$this, 'inject_header_menu_link'], 20, 2);
+        add_filter('wp_page_menu', [$this, 'inject_header_page_menu_link'], 20, 2);
         add_action('wp_head', [$this, 'render_header_menu_styles']);
     }
 
@@ -150,7 +151,7 @@ final class WP_Multisite_Global_Footer
                 <table class="form-table" role="presentation">
                     <tr>
                         <th scope="row"><?php echo esc_html__('Enable header link', 'wpmgf'); ?></th>
-                        <td><label><input type="checkbox" name="enable_header_link" value="1" <?php checked(1, (int) $settings['enable_header_link']); ?> /> <?php echo esc_html__('Add a compact menu link in the site header navigation (after Login/Register when present)', 'wpmgf'); ?></label></td>
+                        <td><label><input type="checkbox" name="enable_header_link" value="1" <?php checked(1, (int) $settings['enable_header_link']); ?> /> <?php echo esc_html__('Add a compact menu link next to the WP icon, before Login/Register', 'wpmgf'); ?></label></td>
                     </tr>
                     <tr>
                         <th scope="row"><label for="header_text"><?php echo esc_html__('Header text', 'wpmgf'); ?></label></th>
@@ -283,25 +284,46 @@ final class WP_Multisite_Global_Footer
             return $items;
         }
 
-        $target = ! empty($settings['open_new_tab']) ? ' target="_blank" rel="noopener"' : '';
-        $label = $settings['header_text'] !== '' ? $settings['header_text'] : __('Main Site', 'wpmgf');
-        $icon = ! empty($settings['show_header_icon']) ? '<span class="wpmgf-header-menu-icon" aria-hidden="true">🏠</span>' : '';
-        $link_item = '<li class="menu-item wpmgf-header-menu-link"><a href="' . esc_url($this->get_main_site_url()) . '"' . $target . '>' . $icon . '<span>' . esc_html($label) . '</span></a></li>';
+        $link_item = $this->build_header_menu_item($settings);
 
-        $patterns = [
-            '/(<li\b[^>]*>.*?wp-login\.php\?action=register.*?<\/li>)/is',
-            '/(<li\b[^>]*>.*?>\s*Register\s*<.*?<\/li>)/is',
-            '/(<li\b[^>]*>.*?wp-login\.php.*?<\/li>)/is',
-            '/(<li\b[^>]*>.*?>\s*Log\s*In\s*<.*?<\/li>)/is',
-        ];
-
-        foreach ($patterns as $pattern) {
-            if (preg_match($pattern, $items, $matches)) {
-                return str_replace($matches[1], $matches[1] . $link_item, $items);
-            }
+        if (preg_match('/(<li\b[^>]*>.*?<\/li>)/is', $items)) {
+            return preg_replace('/(<li\b[^>]*>.*?<\/li>)/is', '$1' . $link_item, $items, 1) ?: ($items . $link_item);
         }
 
         return $items . $link_item;
+    }
+
+    public function inject_header_page_menu_link(string $menu, $_args): string
+    {
+        if (is_admin()) {
+            return $menu;
+        }
+
+        $settings = $this->get_settings();
+        if (empty($settings['enable_header_link'])) {
+            return $menu;
+        }
+
+        if (strpos($menu, 'wpmgf-header-menu-link') !== false) {
+            return $menu;
+        }
+
+        $link_item = $this->build_header_menu_item($settings);
+
+        if (preg_match('/(<li\b[^>]*>.*?<\/li>)/is', $menu)) {
+            return preg_replace('/(<li\b[^>]*>.*?<\/li>)/is', '$1' . $link_item, $menu, 1) ?: ($menu . $link_item);
+        }
+
+        return $menu . $link_item;
+    }
+
+    private function build_header_menu_item(array $settings): string
+    {
+        $target = ! empty($settings['open_new_tab']) ? ' target="_blank" rel="noopener"' : '';
+        $label = $settings['header_text'] !== '' ? $settings['header_text'] : __('Main Site', 'wpmgf');
+        $icon = ! empty($settings['show_header_icon']) ? '<span class="wpmgf-header-menu-icon" aria-hidden="true">🏠</span>' : '';
+
+        return '<li class="menu-item wpmgf-header-menu-link"><a href="' . esc_url($this->get_main_site_url()) . '"' . $target . '>' . $icon . '<span>' . esc_html($label) . '</span></a></li>';
     }
 
     private function get_main_site_url(): string

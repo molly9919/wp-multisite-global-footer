@@ -11,7 +11,7 @@ Simple WordPress multisite plugin that adds a network-wide link to the main site
   - Custom footer background color
   - Custom footer text color
   - Custom button color
-- Optional compact header menu link (inserted after Login/Register when present)
+- Optional compact header menu link (inserted next to WP icon, before Login/Register)
   - Custom text
   - Optional house icon
   - Custom background and text color

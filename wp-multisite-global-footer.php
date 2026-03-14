@@ -1,0 +1,303 @@
+<?php
+/**
+ * Plugin Name: WP Multisite Global Footer
+ * Description: Adds a global network footer link (button or text) and optional header icon/text link to the main site across a multisite network.
+ * Version: 1.0.0
+ * Author: Codex
+ * Network: true
+ * Requires at least: 5.8
+ * Requires PHP: 7.4
+ */
+
+if (! defined('ABSPATH')) {
+    exit;
+}
+
+final class WP_Multisite_Global_Footer
+{
+    private const OPTION_KEY = 'wpmgf_network_settings';
+
+    /** @var self|null */
+    private static $instance = null;
+
+    public static function instance(): self
+    {
+        if (self::$instance === null) {
+            self::$instance = new self();
+        }
+
+        return self::$instance;
+    }
+
+    private function __construct()
+    {
+        add_action('network_admin_menu', [$this, 'register_network_page']);
+        add_action('network_admin_edit_wpmgf_save_settings', [$this, 'save_settings']);
+
+        add_action('wp_footer', [$this, 'render_footer_link'], 20);
+        add_action('wp_body_open', [$this, 'render_header_link']);
+        add_action('wp_footer', [$this, 'render_header_link_fallback'], 1);
+    }
+
+    public static function activate(): void
+    {
+        if (! is_multisite()) {
+            return;
+        }
+
+        $network_id = get_main_network_id();
+        $existing = get_network_option($network_id, self::OPTION_KEY);
+        if (is_array($existing) && ! empty($existing)) {
+            return;
+        }
+
+        update_network_option($network_id, self::OPTION_KEY, self::default_settings());
+    }
+
+    private static function default_settings(): array
+    {
+        return [
+            'enable_footer'            => 1,
+            'footer_style'             => 'button',
+            'footer_text'              => 'Visit Main Website',
+            'footer_bg_color'          => '#111827',
+            'footer_text_color'        => '#ffffff',
+            'footer_button_color'      => '#84cc16',
+            'enable_header_link'       => 0,
+            'header_text'              => 'Main Site',
+            'header_bg_color'          => '#111827',
+            'header_text_color'        => '#ffffff',
+            'show_header_icon'         => 1,
+            'open_new_tab'             => 0,
+        ];
+    }
+
+    private function get_settings(): array
+    {
+        $saved = get_network_option(get_main_network_id(), self::OPTION_KEY, []);
+        if (! is_array($saved)) {
+            $saved = [];
+        }
+
+        return wp_parse_args($saved, self::default_settings());
+    }
+
+    public function register_network_page(): void
+    {
+        add_submenu_page(
+            'settings.php',
+            __('Global Footer Link', 'wpmgf'),
+            __('Global Footer Link', 'wpmgf'),
+            'manage_network_options',
+            'wpmgf-settings',
+            [$this, 'render_network_page']
+        );
+    }
+
+    public function render_network_page(): void
+    {
+        if (! current_user_can('manage_network_options')) {
+            wp_die(esc_html__('You do not have permission to access this page.', 'wpmgf'));
+        }
+
+        $settings = $this->get_settings();
+        $action_url = network_admin_url('edit.php?action=wpmgf_save_settings');
+
+        ?>
+        <div class="wrap">
+            <h1><?php echo esc_html__('WP Multisite Global Footer', 'wpmgf'); ?></h1>
+            <p><?php echo esc_html__('These settings apply to every site in your multisite network.', 'wpmgf'); ?></p>
+
+            <?php if (isset($_GET['updated'])) : ?>
+                <div class="notice notice-success is-dismissible"><p><?php echo esc_html__('Settings saved.', 'wpmgf'); ?></p></div>
+            <?php endif; ?>
+
+            <form method="post" action="<?php echo esc_url($action_url); ?>">
+                <?php wp_nonce_field('wpmgf_save_settings'); ?>
+
+                <h2><?php echo esc_html__('Footer Link', 'wpmgf'); ?></h2>
+                <table class="form-table" role="presentation">
+                    <tr>
+                        <th scope="row"><?php echo esc_html__('Enable footer', 'wpmgf'); ?></th>
+                        <td><label><input type="checkbox" name="enable_footer" value="1" <?php checked(1, (int) $settings['enable_footer']); ?> /> <?php echo esc_html__('Show the footer on all sites', 'wpmgf'); ?></label></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php echo esc_html__('Footer style', 'wpmgf'); ?></th>
+                        <td>
+                            <label><input type="radio" name="footer_style" value="button" <?php checked('button', $settings['footer_style']); ?> /> <?php echo esc_html__('Button', 'wpmgf'); ?></label><br />
+                            <label><input type="radio" name="footer_style" value="text" <?php checked('text', $settings['footer_style']); ?> /> <?php echo esc_html__('Text link', 'wpmgf'); ?></label>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="footer_text"><?php echo esc_html__('Footer text', 'wpmgf'); ?></label></th>
+                        <td><input id="footer_text" name="footer_text" type="text" class="regular-text" value="<?php echo esc_attr($settings['footer_text']); ?>" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="footer_bg_color"><?php echo esc_html__('Footer background color', 'wpmgf'); ?></label></th>
+                        <td><input id="footer_bg_color" name="footer_bg_color" type="text" class="regular-text" value="<?php echo esc_attr($settings['footer_bg_color']); ?>" placeholder="#111827" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="footer_text_color"><?php echo esc_html__('Footer text color', 'wpmgf'); ?></label></th>
+                        <td><input id="footer_text_color" name="footer_text_color" type="text" class="regular-text" value="<?php echo esc_attr($settings['footer_text_color']); ?>" placeholder="#ffffff" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="footer_button_color"><?php echo esc_html__('Footer button color', 'wpmgf'); ?></label></th>
+                        <td><input id="footer_button_color" name="footer_button_color" type="text" class="regular-text" value="<?php echo esc_attr($settings['footer_button_color']); ?>" placeholder="#84cc16" /></td>
+                    </tr>
+                </table>
+
+                <h2><?php echo esc_html__('Optional Header Link', 'wpmgf'); ?></h2>
+                <table class="form-table" role="presentation">
+                    <tr>
+                        <th scope="row"><?php echo esc_html__('Enable header link', 'wpmgf'); ?></th>
+                        <td><label><input type="checkbox" name="enable_header_link" value="1" <?php checked(1, (int) $settings['enable_header_link']); ?> /> <?php echo esc_html__('Show a compact link near the top of each page', 'wpmgf'); ?></label></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="header_text"><?php echo esc_html__('Header text', 'wpmgf'); ?></label></th>
+                        <td><input id="header_text" name="header_text" type="text" class="regular-text" value="<?php echo esc_attr($settings['header_text']); ?>" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="header_bg_color"><?php echo esc_html__('Header background color', 'wpmgf'); ?></label></th>
+                        <td><input id="header_bg_color" name="header_bg_color" type="text" class="regular-text" value="<?php echo esc_attr($settings['header_bg_color']); ?>" placeholder="#111827" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="header_text_color"><?php echo esc_html__('Header text color', 'wpmgf'); ?></label></th>
+                        <td><input id="header_text_color" name="header_text_color" type="text" class="regular-text" value="<?php echo esc_attr($settings['header_text_color']); ?>" placeholder="#ffffff" /></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php echo esc_html__('Show icon', 'wpmgf'); ?></th>
+                        <td><label><input type="checkbox" name="show_header_icon" value="1" <?php checked(1, (int) $settings['show_header_icon']); ?> /> <?php echo esc_html__('Display a small house icon before the text', 'wpmgf'); ?></label></td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><?php echo esc_html__('Link behavior', 'wpmgf'); ?></th>
+                        <td><label><input type="checkbox" name="open_new_tab" value="1" <?php checked(1, (int) $settings['open_new_tab']); ?> /> <?php echo esc_html__('Open link in a new tab', 'wpmgf'); ?></label></td>
+                    </tr>
+                </table>
+
+                <?php submit_button(__('Save Network Settings', 'wpmgf')); ?>
+            </form>
+        </div>
+        <?php
+    }
+
+    public function save_settings(): void
+    {
+        if (! current_user_can('manage_network_options')) {
+            wp_die(esc_html__('You do not have permission to perform this action.', 'wpmgf'));
+        }
+
+        check_admin_referer('wpmgf_save_settings');
+
+        $settings = [
+            'enable_footer'       => isset($_POST['enable_footer']) ? 1 : 0,
+            'footer_style'        => isset($_POST['footer_style']) && $_POST['footer_style'] === 'text' ? 'text' : 'button',
+            'footer_text'         => isset($_POST['footer_text']) ? sanitize_text_field(wp_unslash($_POST['footer_text'])) : '',
+            'footer_bg_color'     => $this->sanitize_hex_color($_POST['footer_bg_color'] ?? '#111827', '#111827'),
+            'footer_text_color'   => $this->sanitize_hex_color($_POST['footer_text_color'] ?? '#ffffff', '#ffffff'),
+            'footer_button_color' => $this->sanitize_hex_color($_POST['footer_button_color'] ?? '#84cc16', '#84cc16'),
+            'enable_header_link'  => isset($_POST['enable_header_link']) ? 1 : 0,
+            'header_text'         => isset($_POST['header_text']) ? sanitize_text_field(wp_unslash($_POST['header_text'])) : '',
+            'header_bg_color'     => $this->sanitize_hex_color($_POST['header_bg_color'] ?? '#111827', '#111827'),
+            'header_text_color'   => $this->sanitize_hex_color($_POST['header_text_color'] ?? '#ffffff', '#ffffff'),
+            'show_header_icon'    => isset($_POST['show_header_icon']) ? 1 : 0,
+            'open_new_tab'        => isset($_POST['open_new_tab']) ? 1 : 0,
+        ];
+
+        update_network_option(get_main_network_id(), self::OPTION_KEY, $settings);
+
+        wp_safe_redirect(add_query_arg('updated', '1', network_admin_url('settings.php?page=wpmgf-settings')));
+        exit;
+    }
+
+    public function render_footer_link(): void
+    {
+        if (is_admin()) {
+            return;
+        }
+
+        $settings = $this->get_settings();
+        if (empty($settings['enable_footer'])) {
+            return;
+        }
+
+        $main_url = $this->get_main_site_url();
+        $target = ! empty($settings['open_new_tab']) ? ' target="_blank" rel="noopener"' : '';
+
+        $wrapper_style = sprintf(
+            'background:%1$s;color:%2$s;padding:14px 16px;text-align:center;margin-top:24px;',
+            esc_attr($settings['footer_bg_color']),
+            esc_attr($settings['footer_text_color'])
+        );
+
+        echo '<div class="wpmgf-global-footer" style="' . $wrapper_style . '">';
+
+        $link_text = $settings['footer_text'] !== '' ? $settings['footer_text'] : __('Visit Main Website', 'wpmgf');
+
+        if ($settings['footer_style'] === 'text') {
+            echo '<a href="' . esc_url($main_url) . '" style="color:' . esc_attr($settings['footer_text_color']) . ';text-decoration:underline;font-weight:600;"' . $target . '>' . esc_html($link_text) . '</a>';
+        } else {
+            $button_style = sprintf(
+                'display:inline-block;background:%1$s;color:%2$s;padding:10px 16px;border-radius:5px;text-decoration:none;font-weight:700;',
+                esc_attr($settings['footer_button_color']),
+                esc_attr($settings['footer_text_color'])
+            );
+            echo '<a href="' . esc_url($main_url) . '" style="' . $button_style . '"' . $target . '>' . esc_html($link_text) . '</a>';
+        }
+
+        echo '</div>';
+    }
+
+    public function render_header_link(): void
+    {
+        $this->render_header_link_markup();
+    }
+
+    public function render_header_link_fallback(): void
+    {
+        if (! did_action('wp_body_open')) {
+            $this->render_header_link_markup();
+        }
+    }
+
+    private function render_header_link_markup(): void
+    {
+        if (is_admin()) {
+            return;
+        }
+
+        $settings = $this->get_settings();
+        if (empty($settings['enable_header_link'])) {
+            return;
+        }
+
+        $main_url = $this->get_main_site_url();
+        $target = ! empty($settings['open_new_tab']) ? ' target="_blank" rel="noopener"' : '';
+
+        $label = $settings['header_text'] !== '' ? $settings['header_text'] : __('Main Site', 'wpmgf');
+        $icon = ! empty($settings['show_header_icon']) ? '<span aria-hidden="true" style="margin-right:6px;">🏠</span>' : '';
+
+        $style = sprintf(
+            'position:fixed;left:8px;top:8px;z-index:9999;background:%1$s;color:%2$s;padding:6px 10px;border-radius:14px;font-size:13px;line-height:1;text-decoration:none;display:inline-flex;align-items:center;box-shadow:0 1px 3px rgba(0,0,0,.2);',
+            esc_attr($settings['header_bg_color']),
+            esc_attr($settings['header_text_color'])
+        );
+
+        echo '<a class="wpmgf-header-link" href="' . esc_url($main_url) . '" style="' . $style . '"' . $target . '>' . $icon . '<span>' . esc_html($label) . '</span></a>';
+    }
+
+    private function get_main_site_url(): string
+    {
+        return get_home_url(get_main_site_id(), '/');
+    }
+
+    private function sanitize_hex_color($value, string $fallback): string
+    {
+        $value = sanitize_text_field(wp_unslash((string) $value));
+        $sanitized = sanitize_hex_color($value);
+
+        return $sanitized ? $sanitized : $fallback;
+    }
+}
+
+register_activation_hook(__FILE__, ['WP_Multisite_Global_Footer', 'activate']);
+WP_Multisite_Global_Footer::instance();

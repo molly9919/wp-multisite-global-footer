@@ -381,7 +381,7 @@ final class WP_Multisite_Global_Footer
         }
 
         $output .= '</div>';
-        $output .= "<script id=\"wpmgf-footer-spacer\">(function(){var f=document.querySelector('.wpmgf-global-footer');if(!f){return;}var h=f.offsetHeight||0;document.body.style.paddingBottom=h+'px';})();</script>";
+        $output .= "<script id=\"wpmgf-footer-spacer\">(function(){var f=document.querySelector('.wpmgf-global-footer');if(!f){return;}var apply=function(){var h=f.offsetHeight||0;document.body.style.paddingBottom=(h+8)+'px';};apply();window.addEventListener('load',apply);window.addEventListener('resize',apply);var imgs=f.querySelectorAll('img');for(var i=0;i<imgs.length;i++){imgs[i].addEventListener('load',apply);}setTimeout(apply,300);setTimeout(apply,1000);})();</script>";
 
         return $output;
     }
